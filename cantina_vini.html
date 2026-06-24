@@ -621,10 +621,10 @@ let imgB64b=null;
 function mostraPick(){
   document.getElementById('cam-body').innerHTML=`
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
-      <div id="thumb-a" style="background:#f0ebfc;border:2px dashed #c9b8e8;border-radius:10px;height:90px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:4px;font-size:12px;color:#5c3d9e">
+      <div id="thumb-a" onclick="apriFotocamera('a')" style="cursor:pointer;background:#f0ebfc;border:2px dashed #c9b8e8;border-radius:10px;height:90px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:4px;font-size:12px;color:#5c3d9e">
         <span style="font-size:24px">📷</span>Anteriore
       </div>
-      <div id="thumb-b" style="background:#f0f0f0;border:2px dashed #ddd;border-radius:10px;height:90px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:4px;font-size:12px;color:#888">
+      <div id="thumb-b" onclick="apriFotocamera('b')" style="cursor:pointer;background:#f0f0f0;border:2px dashed #ddd;border-radius:10px;height:90px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:4px;font-size:12px;color:#888">
         <span style="font-size:24px">📷</span>Posteriore
       </div>
     </div>
