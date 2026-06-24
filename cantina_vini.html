@@ -469,6 +469,7 @@ function renderList(){
       <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
         ${w.score?`<span style="color:#BA7517;font-size:12px">${'★'.repeat(w.score)}</span>`:''}
         <span style="font-size:13px;font-weight:600;background:#f0ede8;border-radius:6px;padding:3px 10px">${qq(w)} bott.</span>
+        <button class="ic-btn" title="Preleva una bottiglia" onclick="event.stopPropagation();prelevaRapido('${w.id}')">🍾</button>
         <button class="ic-btn" onclick="event.stopPropagation();apriForm('${w.id}')">✏️</button>
         <button class="ic-btn" onclick="event.stopPropagation();elimina('${w.id}')">🗑️</button>
       </div>
@@ -505,7 +506,8 @@ function apriDet(id){
       <button class="btn btn-red" onclick="elimina('${w.id}')">Elimina</button>
       <button class="btn btn-ghost" onclick="chiudi('ov-det')">Chiudi</button>
       <button class="btn btn-dark" onclick="chiudi('ov-det');apriForm('${w.id}')">Modifica</button>
-    </div>`;
+    </div>
+    <button class="btn btn-pu" style="width:100%;height:42px;font-size:14px;margin-top:8px" onclick="chiudi('ov-det');prelevaRapido('${w.id}')">🍾 Preleva una bottiglia</button>`;
   document.getElementById('ov-det').classList.add('open');
 }
 
@@ -576,6 +578,19 @@ function salvaVino(){
   toast('✅ Bottiglia salvata');
 }
 
+function prelevaRapido(id){
+  const w=vini.find(x=>x.id===id);if(!w)return;
+  const qt=qq(w);
+  const extra=[w.cantina,w.anno,w.tipo==='Champagne'&&w.sboc?fS(w.sboc):null].filter(Boolean).join(' · ');
+  const msg=`Prelevare una bottiglia di "${w.name}"${extra?' ('+extra+')':''}?\n\nQuantità attuale: ${qt} → dopo: ${Math.max(0,qt-1)}`;
+  if(!confirm(msg))return;
+  registraMovimento('uscita',w,1,'prelievo');
+  if(qt<=1)vini=vini.filter(x=>x.id!==id);
+  else w.qty=qt-1;
+  salva();aggStats();renderList();
+  toast('🍾 Bottiglia prelevata');
+}
+
 function elimina(id){
   if(!confirm('Rimuovere questa bottiglia?'))return;
   const wDel=vini.find(x=>x.id===id);
@@ -613,13 +628,12 @@ function mostraPick(){
         <span style="font-size:24px">📷</span>Posteriore
       </div>
     </div>
-    <label for="inp-cam-a" class="cam-pick-btn cam-pick-main">
+    <div onclick="apriFotocamera('a')" class="cam-pick-btn cam-pick-main" style="cursor:pointer">
       <div class="cam-pick-inner">
         <span class="cam-icon">📸</span>
         <div><div class="cam-label">Etichetta anteriore</div><div class="cam-desc">Scatta o scegli la foto frontale</div></div>
       </div>
-    </label>
-    <input type="file" id="inp-cam-a" accept="image/*" capture="environment" style="position:fixed;opacity:0;width:1px;height:1px;top:-100px">
+    </div>
     <label for="inp-gal-a" class="cam-pick-btn cam-pick-gal" style="margin-bottom:16px">
       <div class="cam-pick-inner" style="padding:10px 18px">
         <span class="cam-icon" style="font-size:22px">🖼️</span>
@@ -628,13 +642,12 @@ function mostraPick(){
     </label>
     <input type="file" id="inp-gal-a" accept="image/*" style="position:fixed;opacity:0;width:1px;height:1px;top:-100px">
     <div style="border-top:1px solid #eee;margin-bottom:14px"></div>
-    <label for="inp-cam-b" class="cam-pick-btn" style="margin-bottom:10px">
+    <div onclick="apriFotocamera('b')" class="cam-pick-btn" style="margin-bottom:10px;cursor:pointer">
       <div class="cam-pick-inner" style="background:#f8f7f5;border:1px solid #ddd;border-radius:12px;padding:14px 18px">
         <span class="cam-icon">📸</span>
         <div><div class="cam-label" style="color:#444">Etichetta posteriore</div><div class="cam-desc" style="color:#888">Opzionale — uvaggio, gradi, note</div></div>
       </div>
-    </label>
-    <input type="file" id="inp-cam-b" accept="image/*" capture="environment" style="position:fixed;opacity:0;width:1px;height:1px;top:-100px">
+    </div>
     <label for="inp-gal-b" class="cam-pick-btn">
       <div class="cam-pick-inner" style="background:#f8f7f5;border:1px solid #ddd;border-radius:12px;padding:10px 18px">
         <span class="cam-icon" style="font-size:22px">🖼️</span>
@@ -642,43 +655,71 @@ function mostraPick(){
       </div>
     </label>
     <input type="file" id="inp-gal-b" accept="image/*" style="position:fixed;opacity:0;width:1px;height:1px;top:-100px">
+    <input type="file" id="inp-cam-shared" accept="image/*" capture="environment" style="position:fixed;opacity:0;width:1px;height:1px;top:-100px">
     <div id="btn-analizza-wrap" style="margin-top:14px;display:none">
       <button class="btn btn-pu" style="width:100%;height:48px;font-size:15px" onclick="avviaAnalisi()">🤖 Analizza etichette</button>
     </div>`;
 
-  // Anteriore
-  ['inp-cam-a','inp-gal-a'].forEach(id=>{
-    document.getElementById(id).onchange=e=>{
-      if(!e.target.files[0])return;
-      const r=new FileReader();
-      r.onload=ev=>{
-        comprimi(ev.target.result, b64=>{
+  // Fotocamera (input unico condiviso anteriore/posteriore — evita il bug iOS/Android
+  // per cui un secondo input capture="environment" nella stessa pagina può non aprirsi)
+  document.getElementById('inp-cam-shared').onchange=e=>{
+    if(!e.target.files[0])return;
+    const target=camCaptureTarget;
+    const r=new FileReader();
+    r.onload=ev=>{
+      comprimi(ev.target.result, b64=>{
+        if(target==='a'){
           imgB64=b64;
           document.getElementById('thumb-a').innerHTML='<img src="data:image/jpeg;base64,'+b64+'" style="width:100%;height:100%;object-fit:cover;border-radius:8px">';
           document.getElementById('thumb-a').style.border='2px solid #5c3d9e';
-          aggiornaBottoneAnalisi();
-        });
-      };
-      r.readAsDataURL(e.target.files[0]);
-    };
-  });
-
-  // Posteriore
-  ['inp-cam-b','inp-gal-b'].forEach(id=>{
-    document.getElementById(id).onchange=e=>{
-      if(!e.target.files[0])return;
-      const r=new FileReader();
-      r.onload=ev=>{
-        comprimi(ev.target.result, b64=>{
+        }else{
           imgB64b=b64;
           document.getElementById('thumb-b').innerHTML='<img src="data:image/jpeg;base64,'+b64+'" style="width:100%;height:100%;object-fit:cover;border-radius:8px">';
           document.getElementById('thumb-b').style.border='2px solid #2d6a2d';
-          aggiornaBottoneAnalisi();
-        });
-      };
-      r.readAsDataURL(e.target.files[0]);
+        }
+        aggiornaBottoneAnalisi();
+      });
     };
-  });
+    r.readAsDataURL(e.target.files[0]);
+    e.target.value=''; // reset per permettere un nuovo scatto pulito la prossima volta
+  };
+
+  // Galleria anteriore
+  document.getElementById('inp-gal-a').onchange=e=>{
+    if(!e.target.files[0])return;
+    const r=new FileReader();
+    r.onload=ev=>{
+      comprimi(ev.target.result, b64=>{
+        imgB64=b64;
+        document.getElementById('thumb-a').innerHTML='<img src="data:image/jpeg;base64,'+b64+'" style="width:100%;height:100%;object-fit:cover;border-radius:8px">';
+        document.getElementById('thumb-a').style.border='2px solid #5c3d9e';
+        aggiornaBottoneAnalisi();
+      });
+    };
+    r.readAsDataURL(e.target.files[0]);
+  };
+
+  // Galleria posteriore
+  document.getElementById('inp-gal-b').onchange=e=>{
+    if(!e.target.files[0])return;
+    const r=new FileReader();
+    r.onload=ev=>{
+      comprimi(ev.target.result, b64=>{
+        imgB64b=b64;
+        document.getElementById('thumb-b').innerHTML='<img src="data:image/jpeg;base64,'+b64+'" style="width:100%;height:100%;object-fit:cover;border-radius:8px">';
+        document.getElementById('thumb-b').style.border='2px solid #2d6a2d';
+        aggiornaBottoneAnalisi();
+      });
+    };
+    r.readAsDataURL(e.target.files[0]);
+  };
+}
+
+let camCaptureTarget='a';
+function apriFotocamera(target){
+  camCaptureTarget=target;
+  document.getElementById('inp-cam-shared').value='';
+  document.getElementById('inp-cam-shared').click();
 }
 
 function aggiornaBottoneAnalisi(){
@@ -864,7 +905,7 @@ function mostraConfermaPrelievo(w){
       <div class="result-name">${w.name}</div>
       <div style="font-size:13px;color:var(--mu);margin-top:4px">${[w.cantina,w.regione,w.anno].filter(Boolean).join(' · ')}</div>
       ${w.tipo==='Champagne'&&w.sboc?`<div style="font-size:13px;color:#185fa5;margin-top:2px">${fS(w.sboc)}</div>`:''}
-      <div style="font-size:14px;margin-top:10px">Quantità attuale: <strong>${qt}</strong> bottiglia${qt!==1?'e':''}</div>
+      <div style="font-size:14px;margin-top:10px">Quantità attuale: <strong>${qt}</strong> bottigli${qt!==1?'e':'a'}</div>
       <div style="font-size:14px">Dopo il prelievo: <strong>${Math.max(0,qt-1)}</strong>${qt===1?' → verrà rimossa dalla cantina':''}</div>
     </div>
     <button class="btn btn-red" style="width:100%;height:48px;font-size:15px;margin-bottom:10px" onclick="confPrelievo()">🍾 Confermo il prelievo</button>
