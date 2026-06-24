@@ -591,9 +591,10 @@ function aproCam(mode){
   camMode=mode;imgB64=null;imgB64b=null;
   document.getElementById('cam-title').textContent=mode==='consume'?'🍾 Prelevo una bottiglia':'📷 Foto etichetta';
   document.getElementById('cam-sub').textContent=mode==='consume'
-    ?'Fotografa l\'etichetta — la bottiglia verrà scalata automaticamente'
+    ?'Fotografa l\'etichetta oppure scegli direttamente dalla lista'
     :'Fotografa l\'etichetta — l\'AI compila tutti i campi automaticamente';
-  mostraPick();
+  if(mode==='consume'){ mostraSceltaManuale(); }
+  else { mostraPick(); }
   document.getElementById('cam-ov').classList.add('open');
 }
 
@@ -802,7 +803,7 @@ function usaRis(){
 
 function mostraRisConsumo(d){
   const nome=(d.nome||'').toLowerCase();
-  let best=null,bs=0;
+  let candidati=[];
   vini.forEach(w=>{
     let sc=0;
     const wn=(w.name||'').toLowerCase();
@@ -810,25 +811,98 @@ function mostraRisConsumo(d){
     wn.split(' ').forEach(p=>{if(p.length>2&&nome.includes(p))sc+=1;});
     if(d.cantina&&w.cantina&&w.cantina.toLowerCase().includes((d.cantina||'').toLowerCase().split(' ')[0]))sc+=2;
     if(d.anno&&w.anno&&Number(w.anno)===Number(d.anno))sc+=3;
-    if(sc>bs){bs=sc;best=w;}
+    if(sc>=2)candidati.push({w,sc});
   });
-  if(!best||bs<2){
+  candidati.sort((a,b)=>b.sc-a.sc);
+
+  if(!candidati.length){
     document.getElementById('cam-body').innerHTML=`
       <div class="err-box">⚠️ Vino non trovato in cantina. Verifica che sia stato inserito con lo stesso nome.</div>
-      <button class="btn btn-ghost" style="width:100%;height:46px;font-size:14px;margin-top:8px" onclick="mostraPick()">← Riprova</button>`;
+      <button class="btn btn-ghost" style="width:100%;height:46px;font-size:14px;margin-top:8px" onclick="mostraPick()">← Riprova</button>
+      <button class="btn btn-dark" style="width:100%;height:46px;font-size:14px;margin-top:8px" onclick="mostraSceltaManuale()">📋 Scegli manualmente dalla cantina</button>`;
     return;
   }
-  const qt=qq(best);
-  window._consumeId=best.id;
+
+  // Se c'è un solo candidato chiaro, mostra conferma diretta
+  if(candidati.length===1){
+    mostraConfermaPrelievo(candidati[0].w);
+    return;
+  }
+
+  // Più candidati simili (es. stesso vino, sboccature diverse) → fai scegliere
+  document.getElementById('cam-body').innerHTML=`
+    <div style="font-size:14px;color:var(--mu);margin-bottom:12px">
+      Trovate <strong>${candidati.length}</strong> bottiglie simili — scegli quella corretta (es. sboccatura diversa):
+    </div>
+    ${candidati.map(({w})=>{
+      const qt=qq(w);
+      const extra=[w.cantina,w.regione,w.anno].filter(Boolean).join(' · ');
+      const sbocBadge=w.tipo==='Champagne'&&w.sboc?` · <span style="color:#185fa5">${fS(w.sboc)}</span>`:'';
+      return`<div onclick="mostraConfermaPrelievoId('${w.id}')"
+        style="background:#fff;border:1px solid #e5e2db;border-radius:10px;padding:12px 14px;margin-bottom:8px;cursor:pointer;display:flex;align-items:center;gap:10px">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:14px;font-weight:600">${w.name}</div>
+          <div style="font-size:12px;color:var(--mu);margin-top:2px">${extra}${sbocBadge}</div>
+        </div>
+        <div style="font-size:13px;font-weight:600;background:#f0ede8;border-radius:6px;padding:3px 9px;flex-shrink:0">${qt} bott.</div>
+      </div>`;
+    }).join('')}
+    <button class="btn btn-ghost" style="width:100%;height:42px;font-size:14px;margin-top:6px" onclick="mostraPick()">← Riprova foto</button>
+    <button class="btn btn-dark" style="width:100%;height:42px;font-size:14px;margin-top:8px" onclick="mostraSceltaManuale()">📋 Scegli da tutta la cantina</button>`;
+}
+
+function mostraConfermaPrelievoId(id){
+  const w=vini.find(x=>x.id===id);if(!w)return;
+  mostraConfermaPrelievo(w);
+}
+
+function mostraConfermaPrelievo(w){
+  const qt=qq(w);
+  window._consumeId=w.id;
   document.getElementById('cam-body').innerHTML=`
     <div class="result-box result-red">
-      <div class="result-name">${best.name}</div>
-      <div style="font-size:13px;color:var(--mu);margin-top:4px">${[best.cantina,best.regione,best.anno].filter(Boolean).join(' · ')}</div>
+      <div class="result-name">${w.name}</div>
+      <div style="font-size:13px;color:var(--mu);margin-top:4px">${[w.cantina,w.regione,w.anno].filter(Boolean).join(' · ')}</div>
+      ${w.tipo==='Champagne'&&w.sboc?`<div style="font-size:13px;color:#185fa5;margin-top:2px">${fS(w.sboc)}</div>`:''}
       <div style="font-size:14px;margin-top:10px">Quantità attuale: <strong>${qt}</strong> bottiglia${qt!==1?'e':''}</div>
       <div style="font-size:14px">Dopo il prelievo: <strong>${Math.max(0,qt-1)}</strong>${qt===1?' → verrà rimossa dalla cantina':''}</div>
     </div>
     <button class="btn btn-red" style="width:100%;height:48px;font-size:15px;margin-bottom:10px" onclick="confPrelievo()">🍾 Confermo il prelievo</button>
     <button class="btn btn-ghost" style="width:100%;height:42px;font-size:14px" onclick="mostraPick()">← Riprova</button>`;
+}
+
+/* ── Scelta manuale (senza foto) dalla cantina intera ── */
+function mostraSceltaManuale(){
+  const ordinati=[...vini].sort((a,b)=>(a.name||'').localeCompare(b.name||'','it'));
+  const isConsume=camMode==='consume';
+  document.getElementById('cam-body').innerHTML=`
+    <input type="text" id="man-search" placeholder="🔍 Cerca nella cantina…" class="fi" style="margin-bottom:10px"
+      oninput="filtraSceltaManuale()">
+    <div id="man-list" style="max-height:340px;overflow-y:auto"></div>
+    ${isConsume?'<button class="btn btn-pu" style="width:100%;height:42px;font-size:14px;margin-top:10px" onclick="mostraPick()">📷 Usa la fotocamera invece</button>':''}`;
+  window._manList=ordinati;
+  filtraSceltaManuale();
+}
+
+function filtraSceltaManuale(){
+  const q=(document.getElementById('man-search').value||'').toLowerCase();
+  const list=(window._manList||[]).filter(w=>!q||[w.name,w.cantina,w.regione].some(x=>(x||'').toLowerCase().includes(q)));
+  const el=document.getElementById('man-list');
+  if(!list.length){el.innerHTML='<div style="text-align:center;padding:1.5rem;color:#bbb;font-size:13px">Nessun vino trovato</div>';return;}
+  el.innerHTML=list.map(w=>{
+    const qt=qq(w);
+    const extra=[w.cantina,w.regione,w.anno].filter(Boolean).join(' · ');
+    const sbocBadge=w.tipo==='Champagne'&&w.sboc?` · <span style="color:#185fa5">${fS(w.sboc)}</span>`:'';
+    return`<div onclick="mostraConfermaPrelievoId('${w.id}')"
+      style="background:#fff;border:1px solid #e5e2db;border-radius:10px;padding:11px 13px;margin-bottom:7px;cursor:pointer;display:flex;align-items:center;gap:10px">
+      <div style="width:10px;height:10px;border-radius:50%;background:${TCOL[w.tipo]||'#888'};flex-shrink:0"></div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:14px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${w.name}</div>
+        <div style="font-size:12px;color:var(--mu);margin-top:1px">${extra}${sbocBadge}</div>
+      </div>
+      <div style="font-size:13px;font-weight:600;background:#f0ede8;border-radius:6px;padding:3px 9px;flex-shrink:0">${qt} bott.</div>
+    </div>`;
+  }).join('');
 }
 
 function confPrelievo(){
