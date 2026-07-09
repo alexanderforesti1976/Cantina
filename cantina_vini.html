@@ -391,12 +391,28 @@ function renderStorico(){
 }
 
 /* ── EXPORT / IMPORT ── */
-function esporta(){
+async function esporta(){
   const json=JSON.stringify({vini:vini,movimenti:movimenti,data:new Date().toISOString()},null,2);
+  const filename='cantina_'+new Date().toISOString().slice(0,10)+'.json';
+  const file=new File([json],filename,{type:'application/json'});
+
+  if(navigator.canShare && navigator.canShare({files:[file]})){
+    try{
+      await navigator.share({files:[file],title:filename});
+      return;
+    }catch(e){
+      if(e.name==='AbortError') return;
+    }
+  }
+
+  const url=URL.createObjectURL(new Blob([json],{type:'application/json'}));
   const a=document.createElement('a');
-  a.href='data:application/json,'+encodeURIComponent(json);
-  a.download='cantina_'+new Date().toISOString().slice(0,10)+'.json';
+  a.href=url;
+  a.download=filename;
+  document.body.appendChild(a);
   a.click();
+  document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
 
 /* ── INIT ── */
